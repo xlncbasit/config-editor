@@ -67,22 +67,22 @@ export default function ConfigEditor() {
   const [error, setError] = useState('');
   const [csvContent, setCsvContent] = useState('');
 
-  useEffect(() => {
-    async function loadConfig() {
-        try {
-          const response = await fetch('/api/config/read');
-          const data = await response.json();
-          if (data.content) {
-            const { headerRow, configRows, firstRows } = parseCSV(data.content);
-            setHeaderRow(headerRow);
-            setConfig(configRows);
-            setFirstRows(firstRows);
-          }
-        } catch {
-          setError('Failed to load configuration');
-        }
+  const loadConfig = async () => {
+    try {
+      const response = await fetch('/api/config/read');
+      const data = await response.json();
+      if (data.content) {
+        const { headerRow, configRows, firstRows } = parseCSV(data.content);
+        setHeaderRow(headerRow);
+        setConfig(configRows);
+        setFirstRows(firstRows);
       }
-      
+    } catch {
+      setError('Failed to load configuration');
+    }
+  };
+
+  useEffect(() => {
     loadConfig();
   }, []);
 
@@ -104,13 +104,25 @@ export default function ConfigEditor() {
   const handleFieldChange = (fieldCode: string, param: string, value: string): void => {
     setError('');
     
-    if (DISPLAY_PARAMS.includes(param) && value) {
-      if (!validateSequence(param, value, fieldCode)) {
-        setError(`Duplicate sequence number ${value} for ${param}`);
+    if (DISPLAY_PARAMS.includes(param)) {
+      // Skip if value is empty
+      if (value && !validateSequence(param, value, fieldCode)) {
+        setError(`Sequence number ${value} is already used in ${param}`);
+        return;
+      }
+  
+      // Check if any other field already has this sequence number
+      const sequenceExists = config.some(field => 
+        field.Field_Code !== fieldCode && 
+        field[param] === value
+      );
+  
+      if (sequenceExists) {
+        setError(`Sequence number ${value} is already used in ${param}`);
         return;
       }
     }
-
+  
     setConfig(prev => prev.map(field => {
       if (field.Field_Code === fieldCode) {
         return { ...field, [param]: value };
@@ -120,6 +132,11 @@ export default function ConfigEditor() {
   };
 
   const addNewField = (): void => {
+    if (config.length === 0) {
+      setError('No existing fields to reference');
+      return;
+    }
+
     const lastField = config[config.length - 1];
     const lastNum = parseInt(lastField.Field_Code.replace('fieldCode', ''));
     const newFieldCode = `fieldCode${String(lastNum + 1).padStart(3, '0')}`;
@@ -156,11 +173,11 @@ export default function ConfigEditor() {
         },
         body: JSON.stringify({ content: csvContent }),
       });
-  
+
       if (!response.ok) {
         throw new Error();
       }
-  
+
       setError('');
     } catch {
       setError('Failed to save configuration');
